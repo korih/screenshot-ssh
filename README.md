@@ -75,4 +75,6 @@ After you edit the config, run `sshot install` to restart the daemon.
 - The daemon log is at `~/Library/Logs/sshot.log`.
 - The daemon runs ssh non-interactively (`BatchMode`). If your key has a passphrase, store it in
   the agent or Keychain (`UseKeychain yes` + `AddKeysToAgent yes` in `~/.ssh/config`).
+- sshot overrides `RemoteCommand` and `RequestTTY` from your `~/.ssh/config` (e.g. a tmux
+  auto-attach) for its own connections; your interactive `ssh` is unaffected.
 - Uninstall with `sshot uninstall`, then delete `~/.local/bin/sshot`.

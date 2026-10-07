@@ -19,6 +19,9 @@ final class Uploader {
             "-o", "ControlPersist=30m",
             "-o", "BatchMode=yes",
             "-o", "ConnectTimeout=5",
+            // A host's RemoteCommand (e.g. auto-attach tmux) conflicts with our commands.
+            "-o", "RemoteCommand=none",
+            "-o", "RequestTTY=no",
         ]
     }
 
