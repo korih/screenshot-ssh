@@ -1,0 +1,6 @@
+[Unit]
+Description=Delete old sshot screenshots
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/sshot clean --days 7

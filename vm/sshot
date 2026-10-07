@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# sshot (VM side): list and clean screenshots uploaded from the Mac.
+set -euo pipefail
+
+SSHOT_DIR="${SSHOT_DIR:-$HOME/.cache/sshot}"
+
+usage() {
+  cat <<EOF
+usage: sshot <command>
+
+  latest [N]          print paths of the newest N screenshots (default 1)
+  clean [--days D]    delete screenshots older than D days (default 7)
+  dir                 print the screenshot directory
+
+Screenshots live in \$SSHOT_DIR (default ~/.cache/sshot).
+EOF
+}
+
+cmd_latest() {
+  local n="${1:-1}"
+  [[ "$n" =~ ^[0-9]+$ ]] || { echo "sshot: N must be a number" >&2; exit 2; }
+  [[ -d "$SSHOT_DIR" ]] || { echo "sshot: no screenshots yet ($SSHOT_DIR missing)" >&2; exit 1; }
+  local files
+  files=$(find "$SSHOT_DIR" -maxdepth 1 -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.gif' -o -iname '*.webp' \) \
+    -printf '%T@ %p\n' | sort -rn | head -n "$n" | cut -d' ' -f2-)
+  [[ -n "$files" ]] || { echo "sshot: no screenshots in $SSHOT_DIR" >&2; exit 1; }
+  printf '%s\n' "$files"
+}
+
+cmd_clean() {
+  local days=7
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --days) days="${2:?--days needs a value}"; shift 2 ;;
+      *) echo "sshot: unknown option $1" >&2; exit 2 ;;
+    esac
+  done
+  [[ "$days" =~ ^[0-9]+$ ]] || { echo "sshot: --days must be a number" >&2; exit 2; }
+  [[ -d "$SSHOT_DIR" ]] || exit 0
+  if [[ "$days" -eq 0 ]]; then
+    find "$SSHOT_DIR" -maxdepth 1 -type f -print -delete
+  else
+    find "$SSHOT_DIR" -maxdepth 1 -type f -mtime +"$((days - 1))" -print -delete
+  fi
+}
+
+case "${1:-}" in
+  latest) shift; cmd_latest "$@" ;;
+  clean)  shift; cmd_clean "$@" ;;
+  dir)    echo "$SSHOT_DIR" ;;
+  -h|--help|help|"") usage ;;
+  *) echo "sshot: unknown command $1" >&2; usage >&2; exit 2 ;;
+esac

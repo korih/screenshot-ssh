@@ -1,0 +1,9 @@
+[Unit]
+Description=Daily cleanup of old sshot screenshots
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target
