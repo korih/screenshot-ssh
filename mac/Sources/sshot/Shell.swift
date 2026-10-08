@@ -4,16 +4,18 @@ enum Shell {
     /// Runs a program and returns its stdout. Output goes through temp files rather than
     /// pipes: a backgrounded ssh ControlMaster can inherit a pipe and keep it open forever.
     @discardableResult
-    static func run(_ executable: String, _ arguments: [String]) throws -> String {
+    static func run(_ executable: String, _ arguments: [String], input: Data? = nil) throws -> String {
         let fm = FileManager.default
         let base = fm.temporaryDirectory.appendingPathComponent("sshot-\(UUID().uuidString)")
         let outURL = base.appendingPathExtension("out")
         let errURL = base.appendingPathExtension("err")
         fm.createFile(atPath: outURL.path, contents: nil)
         fm.createFile(atPath: errURL.path, contents: nil)
+        let inURL = base.appendingPathExtension("in")
         defer {
             try? fm.removeItem(at: outURL)
             try? fm.removeItem(at: errURL)
+            try? fm.removeItem(at: inURL)
         }
         let outHandle = try FileHandle(forWritingTo: outURL)
         let errHandle = try FileHandle(forWritingTo: errURL)
@@ -21,7 +23,12 @@ enum Shell {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
-        process.standardInput = FileHandle.nullDevice
+        if let input {
+            try input.write(to: inURL)
+            process.standardInput = try FileHandle(forReadingFrom: inURL)
+        } else {
+            process.standardInput = FileHandle.nullDevice
+        }
         process.standardOutput = outHandle
         process.standardError = errHandle
         try process.run()
@@ -37,6 +44,12 @@ enum Shell {
             throw SshotError("\(name) exited \(process.terminationStatus)\(detail.isEmpty ? "" : ": \(detail)")")
         }
         return out
+    }
+
+    /// Runs `command` on `host` through the shared sshot connection.
+    @discardableResult
+    static func ssh(_ host: String, _ command: String, input: Data? = nil) throws -> String {
+        try run("/usr/bin/ssh", Uploader.sshOptions + [host, command], input: input)
     }
 
     /// Quotes a string for a POSIX shell.

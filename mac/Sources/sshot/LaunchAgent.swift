@@ -60,19 +60,28 @@ enum Doctor {
             }
         }
 
+        print("sshot \(Payload.stamp)")
         var loaded: Config?
         check("config") {
             let config = try Config.load()
+            guard let def = config.defaultMachine else {
+                throw SshotError("no machines configured; run `sshot machine add <ssh-host>`")
+            }
             loaded = config
-            return "\(Config.path.path) (host \(config.host))"
+            return "\(Config.path.path) (\(config.machines.count) machine(s), default \(def.host))"
         }
         guard let config = loaded else { return false }
 
-        let uploader = Uploader(config: config)
-        check("ssh + remote dir") { try uploader.remoteDir() }
-        check("VM-side sshot (optional)", required: false) {
-            try Shell.run("/usr/bin/ssh", uploader.sshOptions + [config.host, "test -x ~/.local/bin/sshot"])
-            return "installed"
+        for machine in config.machines {
+            let uploader = Uploader(machine: machine, maxDimension: config.maxDimension)
+            check("\(machine.host): ssh + remote dir") { try uploader.remoteDir() }
+            check("\(machine.host): remote version") {
+                let installed = try Remote.installedStamp(machine.host)
+                guard installed == Payload.stamp else {
+                    throw SshotError("\(installed ?? "not installed"), expected \(Payload.stamp); run `sshot machine sync`")
+                }
+                return Payload.stamp
+            }
         }
         check("launch agent") {
             guard let state = LaunchAgent.state() else { throw SshotError("not loaded; run `sshot install`") }

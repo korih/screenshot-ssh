@@ -1,16 +1,20 @@
 import Foundation
 
 final class Uploader {
-    let config: Config
+    let machine: Machine
+    let maxDimension: Int
     private var resolvedDir: String?
     private let lock = NSLock()
 
-    init(config: Config) {
-        self.config = config
+    init(machine: Machine, maxDimension: Int) {
+        self.machine = machine
+        self.maxDimension = maxDimension
     }
 
+    var sshOptions: [String] { Uploader.sshOptions }
+
     /// Shared connection options: reuse one SSH connection so uploads after the first are fast.
-    var sshOptions: [String] {
+    static var sshOptions: [String] {
         let controlPath = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".ssh/sshot-%C").path
         return [
@@ -31,7 +35,7 @@ final class Uploader {
         defer { lock.unlock() }
         if let dir = resolvedDir { return dir }
 
-        let dir = config.remoteDir
+        let dir = machine.remoteDir
         let expr: String
         if dir == "~" {
             expr = "\"$HOME\""
@@ -40,9 +44,9 @@ final class Uploader {
         } else {
             expr = Shell.quote(dir)
         }
-        let out = try Shell.run("/usr/bin/ssh", sshOptions + [config.host, "mkdir -p \(expr) && cd \(expr) && pwd -P"])
+        let out = try Shell.ssh(machine.host, "mkdir -p \(expr) && cd \(expr) && pwd -P")
         guard let resolved = out.split(separator: "\n").last.map(String.init), resolved.hasPrefix("/") else {
-            throw SshotError("could not resolve remote dir \(dir) on \(config.host) (got \(out.debugDescription))")
+            throw SshotError("could not resolve remote dir \(dir) on \(machine.host) (got \(out.debugDescription))")
         }
         resolvedDir = resolved
         return resolved
@@ -50,7 +54,7 @@ final class Uploader {
 
     /// Uploads an image and returns its absolute path on the remote host.
     func upload(_ image: ClipImage) throws -> String {
-        let (data, ext) = try image.prepared(maxDimension: config.maxDimension)
+        let (data, ext) = try image.prepared(maxDimension: maxDimension)
         let tmp = FileManager.default.temporaryDirectory
             .appendingPathComponent("sshot-\(UUID().uuidString).\(ext)")
         try data.write(to: tmp)
@@ -59,7 +63,7 @@ final class Uploader {
         let dir = try remoteDir()
         let remote = "\(dir)/\(Uploader.fileName(ext: ext))"
         do {
-            try Shell.run("/usr/bin/scp", sshOptions + ["-q", tmp.path, "\(config.host):\(remote)"])
+            try Shell.run("/usr/bin/scp", sshOptions + ["-q", tmp.path, "\(machine.host):\(remote)"])
         } catch {
             // The remote dir may have been removed; resolve it again next time.
             lock.lock()

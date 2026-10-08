@@ -2,26 +2,36 @@ import AppKit
 import ApplicationServices
 
 /// Intercepts Cmd+V in terminal apps when the clipboard holds an image: uploads the image
-/// to the VM, then pastes the remote path instead.
+/// to a remote machine, then pastes the remote path instead.
 final class PasteInterceptor {
     let config: Config
-    let uploader: Uploader
+    private let uploaders: [String: Uploader]
     private let titleRegex: NSRegularExpression?
+    private let machineRegexes: [(regex: NSRegularExpression, host: String)]
     private let uploadQueue = DispatchQueue(label: "sshot.upload")
     private var tap: CFMachPort?
     private var busy = false
 
     init(config: Config) throws {
         self.config = config
-        self.uploader = Uploader(config: config)
-        if let pattern = config.titleMatch, !pattern.isEmpty {
-            do {
-                titleRegex = try NSRegularExpression(pattern: pattern)
-            } catch {
-                throw SshotError("invalid title_match regex \(pattern.debugDescription): \(error)")
-            }
-        } else {
-            titleRegex = nil
+        guard !config.machines.isEmpty else {
+            throw SshotError("no machines configured; run `sshot machine add <ssh-host>`")
+        }
+        uploaders = Dictionary(uniqueKeysWithValues: config.machines.map {
+            ($0.host, Uploader(machine: $0, maxDimension: config.maxDimension))
+        })
+        titleRegex = try PasteInterceptor.regex(config.titleMatch)
+        machineRegexes = try config.machines.compactMap { m in
+            try PasteInterceptor.regex(m.titleMatch).map { ($0, m.host) }
+        }
+    }
+
+    private static func regex(_ pattern: String?) throws -> NSRegularExpression? {
+        guard let pattern, !pattern.isEmpty else { return nil }
+        do {
+            return try NSRegularExpression(pattern: pattern)
+        } catch {
+            throw SshotError("invalid title_match regex \(pattern.debugDescription): \(error)")
         }
     }
 
@@ -45,13 +55,19 @@ final class PasteInterceptor {
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
 
-        // Open the shared SSH connection now so the first paste is fast.
-        uploadQueue.async { [uploader] in
-            do {
-                let dir = try uploader.remoteDir()
-                logMessage("remote dir: \(dir)")
-            } catch {
-                logMessage("warning: could not reach \(uploader.config.host): \(error)")
+        // Bring every machine to this version and open the shared SSH connections now,
+        // so the first paste is fast.
+        uploadQueue.async { [uploaders] in
+            for (host, uploader) in uploaders.sorted(by: { $0.key < $1.key }) {
+                do {
+                    switch try Remote.sync(host) {
+                    case .current: break
+                    case .installed(let from): logMessage("\(host): updated sshot \(from ?? "(none)") -> \(Payload.stamp)")
+                    }
+                    logMessage("\(host): remote dir \(try uploader.remoteDir())")
+                } catch {
+                    logMessage("warning: could not reach \(host): \(error)")
+                }
             }
         }
     }
@@ -61,42 +77,51 @@ final class PasteInterceptor {
             if let tap { CGEvent.tapEnable(tap: tap, enable: true) }
             return Unmanaged.passUnretained(event)
         }
-        guard type == .keyDown, shouldIntercept(event) else {
+        guard type == .keyDown, let uploader = target(for: event) else {
             return Unmanaged.passUnretained(event)
         }
         // Swallow repeat presses while an upload is in flight.
         if busy { return nil }
         busy = true
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        DispatchQueue.main.async { self.uploadAndPaste(keyCode: keyCode) }
+        DispatchQueue.main.async { self.uploadAndPaste(with: uploader, keyCode: keyCode) }
         return nil
     }
 
-    private func shouldIntercept(_ event: CGEvent) -> Bool {
+    /// The uploader to use if this event is an image paste we should take over, else nil.
+    private func target(for event: CGEvent) -> Uploader? {
         guard event.getIntegerValueField(.eventSourceUserData) != Clipboard.syntheticMarker,
               event.getIntegerValueField(.keyboardEventAutorepeat) == 0
-        else { return false }
+        else { return nil }
 
         let modifiers = event.flags.intersection([.maskCommand, .maskShift, .maskControl, .maskAlternate])
         guard modifiers == .maskCommand,
               NSEvent(cgEvent: event)?.charactersIgnoringModifiers?.lowercased() == "v"
-        else { return false }
+        else { return nil }
 
         guard let app = NSWorkspace.shared.frontmostApplication,
               let bundleID = app.bundleIdentifier,
-              config.terminalApps.contains(bundleID)
-        else { return false }
+              config.terminalApps.contains(bundleID),
+              Clipboard.hasImage()
+        else { return nil }
 
-        if let titleRegex {
+        // A machine whose title_match matches wins; otherwise the default machine, unless the
+        // global title_match is set and doesn't match either.
+        var host = config.defaultMachine?.host
+        if titleRegex != nil || !machineRegexes.isEmpty {
             let title = PasteInterceptor.focusedWindowTitle(pid: app.processIdentifier) ?? ""
             let range = NSRange(title.startIndex..., in: title)
-            guard titleRegex.firstMatch(in: title, range: range) != nil else { return false }
+            func matches(_ r: NSRegularExpression) -> Bool { r.firstMatch(in: title, range: range) != nil }
+            if let hit = machineRegexes.first(where: { matches($0.regex) }) {
+                host = hit.host
+            } else if let titleRegex, !matches(titleRegex) {
+                return nil
+            }
         }
-
-        return Clipboard.hasImage()
+        return host.flatMap { uploaders[$0] }
     }
 
-    private func uploadAndPaste(keyCode: CGKeyCode) {
+    private func uploadAndPaste(with uploader: Uploader, keyCode: CGKeyCode) {
         let images: [ClipImage]
         do {
             images = try Clipboard.readImages()
@@ -106,7 +131,7 @@ final class PasteInterceptor {
         }
         uploadQueue.async {
             do {
-                let paths = try images.map { try self.uploader.upload($0) }
+                let paths = try images.map { try uploader.upload($0) }
                 logMessage("uploaded \(paths.joined(separator: " "))")
                 DispatchQueue.main.async { self.paste(paths.joined(separator: " "), keyCode: keyCode) }
             } catch {
@@ -161,7 +186,8 @@ enum Daemon {
 
         let app = NSApplication.shared
         app.setActivationPolicy(.prohibited)
-        logMessage("sshot daemon starting (host \(config.host), apps \(config.terminalApps.joined(separator: ",")))")
+        let hosts = config.machines.map(\.host).joined(separator: ",")
+        logMessage("sshot \(Payload.stamp) daemon starting (machines \(hosts), default \(config.defaultMachine?.host ?? "-"), apps \(config.terminalApps.joined(separator: ",")))")
 
         let prompt = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         if AXIsProcessTrustedWithOptions(prompt) {

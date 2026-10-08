@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SSHOT_DIR="${SSHOT_DIR:-$HOME/.cache/sshot}"
+SSHOT_VERSION="@VERSION@"
 
 usage() {
   cat <<EOF
@@ -11,6 +12,7 @@ usage: sshot <command>
   latest [N]          print paths of the newest N screenshots (default 1)
   clean [--days D]    delete screenshots older than D days (default 7)
   dir                 print the screenshot directory
+  version             print the installed version (managed from the Mac)
 
 Screenshots live in \$SSHOT_DIR (default ~/.cache/sshot).
 EOF
@@ -48,6 +50,7 @@ case "${1:-}" in
   latest) shift; cmd_latest "$@" ;;
   clean)  shift; cmd_clean "$@" ;;
   dir)    echo "$SSHOT_DIR" ;;
+  version) echo "$SSHOT_VERSION" ;;
   -h|--help|help|"") usage ;;
   *) echo "sshot: unknown command $1" >&2; usage >&2; exit 2 ;;
 esac
