@@ -19,7 +19,8 @@ die() { echo "sshot: $*" >&2; exit 1; }
 # to the new version.
 restart_daemon() {
   daemon_bin="$(plutil -extract ProgramArguments.0 raw "$plist" 2>/dev/null || true)"
-  if [ -n "$daemon_bin" ] && [ "$daemon_bin" -ef "$dest/sshot" ]; then
+  # Same file (device:inode); POSIX sh has no -ef.
+  if [ -n "$daemon_bin" ] && [ "$(stat -L -f %d:%i "$daemon_bin" 2>/dev/null)" = "$(stat -L -f %d:%i "$dest/sshot")" ]; then
     "$dest/sshot" install >/dev/null
     "$dest/sshot" machine sync || true
     echo "If Cmd+V stops working, re-allow sshot in System Settings > Privacy & Security > Accessibility."
