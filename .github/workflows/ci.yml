@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Build universal binary
         run: scripts/build-release.sh
       - name: Smoke test
@@ -30,7 +30,7 @@ jobs:
   shell:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: shellcheck
         run: shellcheck install.sh scripts/*.sh vm/install.sh vm/uninstall.sh vm/sshot
       - name: Remote side install and CLI
