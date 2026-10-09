@@ -20,7 +20,7 @@ jobs:
         run: |
           dist/sshot help
           dist/sshot version | grep -q "^sshot $(cat VERSION)+"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: sshot-macos
           path: |
