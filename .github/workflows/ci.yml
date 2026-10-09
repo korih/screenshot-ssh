@@ -1,0 +1,52 @@
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build universal binary
+        run: scripts/build-release.sh
+      - name: Smoke test
+        run: |
+          dist/sshot help
+          dist/sshot version | grep -q "^sshot $(cat VERSION)+"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sshot-macos
+          path: |
+            dist/sshot-macos.tar.gz
+            dist/sshot-macos.tar.gz.sha256
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck install.sh scripts/*.sh vm/install.sh vm/uninstall.sh vm/sshot
+      - name: Remote side install and CLI
+        run: |
+          # A throwaway HOME, and no systemd user session so the cleanup timer is skipped.
+          export HOME="$RUNNER_TEMP/home"
+          unset XDG_RUNTIME_DIR DBUS_SESSION_BUS_ADDRESS
+          mkdir -p "$HOME"
+          SSHOT_VERSION=ci bash vm/install.sh
+          sshot="$HOME/.local/bin/sshot"
+          test "$("$sshot" version)" = ci
+          touch -d '10 days ago' "$HOME/.cache/sshot/old.png"
+          touch "$HOME/.cache/sshot/new.png"
+          test "$("$sshot" latest)" = "$HOME/.cache/sshot/new.png"
+          "$sshot" clean --days 7
+          test ! -e "$HOME/.cache/sshot/old.png"
+          test -e "$HOME/.cache/sshot/new.png"
+          test -f "$HOME/.claude/commands/shot.md"
+          bash "$HOME/.local/share/sshot/uninstall.sh"

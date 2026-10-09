@@ -1,5 +1,7 @@
 # sshot
 
+[![ci](https://github.com/korih/screenshot-ssh/actions/workflows/ci.yml/badge.svg)](https://github.com/korih/screenshot-ssh/actions/workflows/ci.yml)
+
 Paste Mac screenshots into Claude Code running on remote machines over SSH.
 
 Take a screenshot to the clipboard (**Cmd+Ctrl+Shift+4**), then press **Cmd+V** in your SSH
@@ -20,15 +22,19 @@ Uploads reuse a single SSH connection (ControlMaster), so after the first one th
 Everything ships as one Mac binary. It carries the remote side and installs it over SSH, so
 nothing needs to be cloned or built on the remote machine.
 
-Requirements: the Xcode Command Line Tools (`xcode-select --install`) and key-based SSH to each
-machine with no password prompt (an alias in `~/.ssh/config` is recommended).
+Requirements: macOS 13 or later, and key-based SSH to each machine with no password prompt (an
+alias in `~/.ssh/config` is recommended).
 
 ```sh
-curl -fsSL https://forgejo.korih.com/k/screenshot-transfer/raw/branch/master/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/korih/screenshot-ssh/master/install.sh | sh
 ```
 
-The installer clones the repo to `~/.local/share/sshot/src`, builds it (a few seconds), and
-installs `~/.local/bin/sshot`. Set `SSHOT_REF` to build a branch or tag other than `master`.
+The installer downloads the latest [release](https://github.com/korih/screenshot-ssh/releases)
+(a universal binary for Apple silicon and Intel), checks its SHA-256, and installs `~/.local/bin/sshot`.
+
+To build from source instead (needs the Xcode Command Line Tools, `xcode-select --install`), set
+`SSHOT_FROM_SOURCE=1`, or `SSHOT_REF=<branch or tag>` to build something other than `master`. The
+installer clones the repo to `~/.local/share/sshot/src` and builds it in a few seconds.
 
 Then add each machine where Claude Code runs:
 
@@ -67,7 +73,6 @@ sshot machine default linux
 sshot send -m gpu-box shot.png
 ```
 
-## Usage
 ## Usage
 
 | Where | What |
@@ -110,12 +115,22 @@ After you edit the config by hand, run `sshot install` to restart the daemon.
 
 ## Updating and development
 
-- `sshot upgrade` pulls the latest `master`, rebuilds, restarts the daemon and syncs every machine.
-  It does nothing if the source hasn't changed; `--force` rebuilds anyway.
+- `sshot upgrade` installs the latest release, restarts the daemon and syncs every machine. It does
+  nothing if you already have that release; `--force` reinstalls anyway. With `SSHOT_FROM_SOURCE=1`
+  or `SSHOT_REF` set, it pulls and rebuilds the source instead.
 - From a checkout, `scripts/install-from-source.sh` builds and installs your working tree, then
   restarts the daemon and syncs all machines. Use it to try out changes before pushing.
+- `scripts/build-release.sh` builds the universal release binary into `dist/`, the same way CI does.
 - Bump `VERSION` when you change behaviour. Machines are compared on `VERSION` plus a hash of
   `vm/`, so edits to the remote scripts are pushed out even without a bump.
+
+## Releasing
+
+1. Bump `VERSION` (e.g. `0.3.0`) and commit.
+2. Tag and push: `git tag v0.3.0 && git push origin master v0.3.0`.
+
+The `release` workflow checks that the tag matches `VERSION`, builds the universal binary and
+publishes a GitHub release with `sshot-macos.tar.gz` and its checksum. `sshot upgrade` picks it up from there.
 
 ## Troubleshooting
 
@@ -127,3 +142,7 @@ After you edit the config by hand, run `sshot install` to restart the daemon.
   auto-attach) for its own connections; your interactive `ssh` is unaffected.
 - Uninstall with `sshot machine remove <host>` for each machine (this deletes its screenshots too;
   `--keep-remote` leaves the machine alone), then `sshot uninstall` and delete `~/.local/bin/sshot`.
+
+## License
+
+[MIT](LICENSE)

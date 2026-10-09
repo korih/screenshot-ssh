@@ -15,7 +15,7 @@ usage: sshot <command>
   install                        install and start the background daemon (LaunchAgent)
   uninstall                      stop and remove the background daemon
   doctor                         check config, SSH, remote versions and daemon status
-  upgrade [--force]              rebuild from the latest source and sync all machines
+  upgrade [--force]              install the latest release and sync all machines
   version                        print the version
   daemon                         run the Cmd+V interceptor in the foreground
 """

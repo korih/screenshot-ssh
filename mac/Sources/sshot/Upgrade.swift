@@ -1,9 +1,9 @@
 import Foundation
 
-/// Self-update: re-runs install.sh, which pulls the source, rebuilds, restarts the daemon
-/// and syncs every machine.
+/// Self-update: re-runs install.sh, which installs the latest release (or rebuilds from source
+/// when SSHOT_REF or SSHOT_FROM_SOURCE is set), restarts the daemon and syncs every machine.
 enum Upgrade {
-    static let installer = "https://forgejo.korih.com/k/screenshot-transfer/raw/branch/master/install.sh"
+    static let installer = "https://raw.githubusercontent.com/korih/screenshot-ssh/master/install.sh"
 
     static func run(force: Bool) throws -> Never {
         let process = Process()
