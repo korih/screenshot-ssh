@@ -55,10 +55,10 @@ Integration branch: `dev/cross-platform-go`. Packet branches `cross-platform-go/
 - First prep commit (before any packet): `go.mod` (`module github.com/korih/screenshot-ssh`, `go 1.24`) requiring the six pre-approved modules, `go.sum`, `.gitattributes` (`vm/** text eol=lf`, `VERSION text eol=lf`, `*.sh text eol=lf`).
 - `VERSION` → `0.3.0` after M2 (prep commit; tag `v0.3.0` is a user gate). `VERSION` → `1.0.0` after M3 (same).
 - Manual user checks: P1-WINSPIKE, P2-WINWIRE, P3-MACSVC.
-- Forgejo issue tracking this release: see session log.
+- Forgejo issue tracking this release: https://forgejo.korih.com/k/screenshot-transfer/issues/1 (ref `dev/cross-platform-go`).
 
 ## Session log
-- 2026-11-13 s1: plan committed, 5 packets ready.
+- 2026-11-13 s1: plan committed, 5 packets ready. Branch pushed to origin; issue #1 opened and linked to the branch.
 
 ## Decision log
 | Date | Decision | Reason |
